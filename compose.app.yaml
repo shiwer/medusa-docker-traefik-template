@@ -1,0 +1,144 @@
+networks:
+  proxy:
+    external: true
+    name: traefik-proxy
+  internal:
+    external: true
+    name: infra-internal
+
+services:
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CACHE_REDIS_URL: ${REDIS_URL}
+      EVENTS_REDIS_URL: ${REDIS_URL}
+      WE_REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      STORE_CORS: ${STORE_CORS}
+      ADMIN_URL: ${ADMIN_URL}
+      ADMIN_CORS: ${ADMIN_CORS}
+      AUTH_CORS: ${AUTH_CORS}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/health" ]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - proxy
+      - internal
+    labels:
+      - "traefik.enable=true"
+
+      # ================================
+      # Service Medusa (port interne)
+      # ================================
+      - "traefik.http.services.medusa.loadbalancer.server.port=9000"
+
+      # ================================
+      # Middleware IP whitelist ADMIN
+      # ================================
+      - "traefik.http.middlewares.medusa-admin-ip.ipallowlist.sourcerange=${ADMIN_ALLOWED_IPS}"
+
+      # ================================
+      # Router ADMIN (PROTECTED)
+      # /app + /admin
+      # ================================
+      - "traefik.http.routers.medusa-admin.rule=Host(`${API_DOMAIN}`) && (PathPrefix(`/app`) || PathPrefix(`/admin`))"
+      - "traefik.http.routers.medusa-admin.entrypoints=websecure"
+      - "traefik.http.routers.medusa-admin.tls=true"
+      - "traefik.http.routers.medusa-admin.tls.certresolver=le"
+      - "traefik.http.routers.medusa-admin.middlewares=medusa-admin-ip"
+      - "traefik.http.routers.medusa-admin.service=medusa"
+      - "traefik.http.routers.medusa-admin.priority=100"
+
+      # ================================
+      # Router PUBLIC (API store + static)
+      # ================================
+      - "traefik.http.routers.medusa-public.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.medusa-public.entrypoints=websecure"
+      - "traefik.http.routers.medusa-public.tls=true"
+      - "traefik.http.routers.medusa-public.tls.certresolver=le"
+      - "traefik.http.routers.medusa-public.service=medusa"
+      - "traefik.http.routers.medusa-public.priority=1"
+
+      - "traefik.docker.network=traefik-proxy"
+
+
+  storefront:
+    env_file:
+      - .env
+    environment:
+      HOSTNAME: 0.0.0.0
+      MEDUSA_BACKEND_URL: http://backend:9000
+    build:
+      context: ./apps/storefront
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=${NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY}
+        - NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL}
+        - NEXT_PUBLIC_AUTH_CORS=${NEXT_PUBLIC_AUTH_CORS}
+        - NEXT_PUBLIC_DEFAULT_REGION=${NEXT_PUBLIC_DEFAULT_REGION}
+        - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
+        - REVALIDATE_SECRET=${REVALIDATE_SECRET}
+        - NEXT_PUBLIC_STRIPE_KEY=${NEXT_PUBLIC_STRIPE_KEY}
+    networks:
+      - proxy
+      - internal
+    depends_on:
+      backend-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.storefront.loadbalancer.server.port=8000"
+
+      # Main storefront domain
+      - "traefik.http.routers.storefront.rule=Host(`${SHOP_DOMAIN}`)"
+      - "traefik.http.routers.storefront.entrypoints=websecure"
+      - "traefik.http.routers.storefront.tls=true"
+      - "traefik.http.routers.storefront.tls.certresolver=le"
+      - "traefik.http.routers.storefront.service=storefront"
+      - "traefik.http.routers.storefront.middlewares=security-headers"
+
+      # Redirect www to root domain
+      - "traefik.http.routers.storefront-www.rule=Host(`${SHOP_DOMAIN_WWW}`)"
+      - "traefik.http.routers.storefront-www.entrypoints=websecure"
+      - "traefik.http.routers.storefront-www.tls=true"
+      - "traefik.http.routers.storefront-www.tls.certresolver=le"
+      - "traefik.http.routers.storefront-www.middlewares=www-to-root"
+      - "traefik.http.routers.storefront-www.service=noop@internal"
+      - "traefik.http.routers.storefront-www.priority=100"
+
+      - "traefik.http.middlewares.www-to-root.redirectregex.regex=^https?://${SHOP_DOMAIN_WWW_ESCAPED}(.*)"
+      - "traefik.http.middlewares.www-to-root.redirectregex.replacement=https://${SHOP_DOMAIN}$${1}"
+      - "traefik.http.middlewares.www-to-root.redirectregex.permanent=true"
+
+      # Basic security headers
+      - "traefik.http.middlewares.security-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.security-headers.headers.customFrameOptionsValue=SAMEORIGIN"
+
+      - "traefik.docker.network=traefik-proxy"

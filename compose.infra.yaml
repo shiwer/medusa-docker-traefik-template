@@ -1,0 +1,68 @@
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  proxy:
+    name: traefik-proxy
+  internal:
+    name: infra-internal
+
+services:
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+
+      - "--entryPoints.web.address=:80"
+      - "--entryPoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entryPoints.web.http.redirections.entryPoint.scheme=https"
+
+      - "--entryPoints.websecure.address=:443"
+
+      - "--certificatesResolvers.le.acme.httpchallenge=true"
+      - "--certificatesResolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesResolvers.le.acme.email=${TRAEFIK_ACME_EMAIL}"
+      - "--certificatesResolvers.le.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./infra/traefik/letsencrypt:/letsencrypt"
+    restart: unless-stopped
+    networks:
+      - proxy
+
+  postgres:
+    image: postgres:17
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal
+
+  redis:
+    image: redis:7
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal

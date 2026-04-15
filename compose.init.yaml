@@ -1,0 +1,55 @@
+networks:
+  internal:
+    external: true
+    name: infra-internal
+
+services:
+  backend-migrate:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    command: ["./migrate.sh"]
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CACHE_REDIS_URL: ${REDIS_URL}
+      EVENTS_REDIS_URL: ${REDIS_URL}
+      WE_REDIS_URL: ${REDIS_URL}
+      POSTGRES_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  backend-create-admin:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    command: ["./create-admin.sh"]
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CACHE_REDIS_URL: ${REDIS_URL}
+      EVENTS_REDIS_URL: ${REDIS_URL}
+      WE_REDIS_URL: ${REDIS_URL}
+      POSTGRES_URL: ${DATABASE_URL}
+      MEDUSA_ADMIN_EMAIL: ${MEDUSA_ADMIN_EMAIL}
+      MEDUSA_ADMIN_PASSWORD: ${MEDUSA_ADMIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal

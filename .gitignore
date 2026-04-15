@@ -1,0 +1,63 @@
+# =========================
+# Environment variables
+# =========================
+.env
+.env.local
+.env.*.local
+
+# =========================
+# Node.js / Medusa / Next.js
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+.next/
+dist/
+build/
+.medusa/
+
+# TypeScript
+*.tsbuildinfo
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+
+# =========================
+# Docker
+# =========================
+# Traefik certificates (sensitive)
+infra/traefik/letsencrypt/acme.json
+
+# Docker overrides (local only)
+docker-compose.override.yml
+compose.override.yaml
+
+# =========================
+# Database / volumes (safety)
+# =========================
+# (si jamais quelqu’un monte des volumes locaux)
+postgres-data/
+redis-data/
+
+# =========================
+# Misc
+# =========================
+*.swp
+*.swo
+*~
