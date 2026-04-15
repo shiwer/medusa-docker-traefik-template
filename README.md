@@ -626,7 +626,7 @@ Check the internal backend URL used by the storefront container.
 
 Example:
 
-MEDUSA_BACKEND_URL=http://medusa:9000
+MEDUSA_BACKEND_URL=http://backend:9000
 
 Inside Docker, service names are used for communication.
 
